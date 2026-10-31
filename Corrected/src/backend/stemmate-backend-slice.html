@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>STEMMate Namibia - Data, Login and Sync Slice</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1b1f24; --muted:#4a5560; --line:#b9c0c8; --blue:#0b4f9c;
+          --ok:#116329; --okbg:#e3f5e8; --warn:#7a4b00; --warnbg:#fff1cc; --bad:#9b1c1c; --badbg:#fde4e4; }
+  * { box-sizing:border-box; }
+  body { font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; background:var(--bg); color:var(--text); margin:0; padding:16px; line-height:1.45; }
+  .wrap { max-width:720px; margin:0 auto; }
+  h1 { font-size:1.4rem; margin:0 0 4px; } h2 { font-size:1.1rem; margin:0 0 10px; }
+  .sub { color:var(--muted); font-size:.9rem; margin:0 0 14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px; margin-bottom:14px; }
+  label { display:block; font-weight:600; margin:10px 0 4px; }
+  input, textarea, select { width:100%; font:inherit; padding:8px; border:1px solid #6b7580; border-radius:6px; background:#fff; color:var(--text); }
+  textarea { min-height:84px; resize:vertical; }
+  :focus-visible { outline:3px solid #ffb000; outline-offset:2px; }
+  button { font:inherit; padding:9px 14px; border-radius:6px; border:1px solid var(--blue); background:var(--blue); color:#fff; cursor:pointer; margin:8px 8px 0 0; }
+  button.secondary { background:#fff; color:var(--blue); }
+  .hint { color:var(--muted); font-size:.85rem; font-weight:400; }
+  .err { color:var(--bad); font-size:.9rem; margin:4px 0 0; }
+  .banner { padding:10px 12px; border-radius:6px; border:2px solid; font-weight:600; margin-bottom:14px; }
+  .s-synced { background:var(--okbg); border-color:var(--ok); color:var(--ok); }
+  .s-pending { background:var(--warnbg); border-color:var(--warn); color:var(--warn); }
+  .s-failed { background:var(--badbg); border-color:var(--bad); color:var(--bad); }
+  .s-none { background:#eef1f4; border-color:var(--line); color:var(--muted); }
+  ul.plans { list-style:none; padding:0; margin:0; }
+  ul.plans li { border:1px solid var(--line); border-radius:6px; padding:10px; margin-bottom:8px; }
+  .tag { display:inline-block; padding:2px 8px; border-radius:12px; border:2px solid; font-size:.85rem; font-weight:700; }
+  pre#log { background:#101418; color:#d7dde3; padding:10px; border-radius:6px; max-height:200px; overflow:auto; white-space:pre-wrap; font-size:.8rem; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; } .row > div { flex:1 1 200px; }
+  .sr-only { position:absolute; left:-9999px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>STEMMate Namibia: plan a session offline</h1>
+    <p class="sub">Data storage, login, plan validation and sync status (backend and data slice). Synthetic demo data only. Not production-ready.</p>
+  </header>
+
+  <div id="status" class="banner s-none" role="status" aria-live="polite">Not signed in.</div>
+
+  <!-- LOGIN (FR-A4-01) -->
+  <section id="loginCard" class="card" aria-labelledby="loginH">
+    <h2 id="loginH">1. Sign in</h2>
+    <form id="loginForm" novalidate>
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="username" aria-describedby="loginErr">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" aria-describedby="loginErr">
+      <p id="loginErr" class="err" role="alert"></p>
+      <button type="submit">Sign in</button>
+      <p class="hint">Demo accounts: facilitator1@example.org / Demo-Pass-1 and facilitator2@example.org / Demo-Pass-2.
+      This is a placeholder check for the prototype. A real build must verify the password on a server.</p>
+    </form>
+  </section>
+
+  <main id="app" hidden>
+    <div class="card">
+      <span id="who"></span>
+      <button id="logout" class="secondary" type="button">Sign out</button>
+    </div>
+
+    <!-- PLAN EDITOR (FR-03, QR-02) -->
+    <section class="card" aria-labelledby="planH">
+      <h2 id="planH">2. Create or edit a session plan</h2>
+      <form id="planForm" novalidate>
+        <input type="hidden" id="planId">
+        <label for="title">Plan title</label>
+        <input id="title" name="title" aria-describedby="e-title">
+        <p id="e-title" class="err"></p>
+
+        <label for="steps">Activity steps <span class="hint">(one step per line)</span></label>
+        <textarea id="steps" name="steps" aria-describedby="e-steps"></textarea>
+        <p id="e-steps" class="err"></p>
+
+        <div class="row">
+          <div>
+            <label for="minutes">Timing <span class="hint">(total minutes, 5 to 240)</span></label>
+            <input id="minutes" name="minutes" inputmode="numeric" aria-describedby="e-minutes">
+            <p id="e-minutes" class="err"></p>
+          </div>
+          <div>
+            <label for="materials">Materials <span class="hint">(write "None" if none)</span></label>
+            <input id="materials" name="materials" aria-describedby="e-materials">
+            <p id="e-materials" class="err"></p>
+          </div>
+        </div>
+
+        <label for="safety">Safety note</label>
+        <input id="safety" name="safety" aria-describedby="e-safety">
+        <p id="e-safety" class="err"></p>
+
+        <label for="inclusion">Inclusion prompt</label>
+        <input id="inclusion" name="inclusion" aria-describedby="e-inclusion">
+        <p id="e-inclusion" class="err"></p>
+
+        <p id="draftNote" class="hint" aria-live="polite"></p>
+        <button type="submit">Save plan</button>
+        <button type="button" id="newPlan" class="secondary">Clear form</button>
+      </form>
+    </section>
+
+    <!-- SAVED PLANS + SYNC STATUS (FR-04, FR-A4-02) -->
+    <section class="card" aria-labelledby="listH">
+      <h2 id="listH">3. Saved plans and sync status</h2>
+      <button type="button" id="syncNow">Sync now</button>
+      <ul id="plans" class="plans" aria-live="polite"></ul>
+    </section>
+
+    <!-- DEMO CONTROLS -->
+    <section class="card" aria-labelledby="demoH">
+      <h2 id="demoH">Demo controls (testing only)</h2>
+      <p class="hint">There is no real server yet. "Server" below is a simulated server kept in this browser. Replace <code>sendToServer()</code> with a real <code>fetch()</code> call when the API exists. Until then a plan is only marked Synced after this simulated server acknowledges it.</p>
+      <label><input type="checkbox" id="offlineToggle" style="width:auto"> Simulate no internet</label>
+      <label><input type="checkbox" id="rejectToggle" style="width:auto"> Simulate server rejecting the plan</label>
+      <p id="serverCount" class="hint"></p>
+    </section>
+
+    <section class="card" aria-labelledby="logH">
+      <h2 id="logH">Event log</h2>
+      <pre id="log" tabindex="0" aria-label="Event log"></pre>
+    </section>
+  </main>
+</div>
+
+<script>
+"use strict";
+/* ---------- Demo accounts (placeholder; SHA-256 of salt + password) ---------- */
+const DEMO_ACCOUNTS = [
+  { id: "FAC-0001", name: "Facilitator 1 (demo)", email: "facilitator1@example.org", salt: "stm-salt-1", hash: "1473eee6f855b483972fca8707ddf95cd1395b297d342ad22a8dce997d4d1708" },
+  { id: "FAC-0002", name: "Facilitator 2 (demo)", email: "facilitator2@example.org", salt: "stm-salt-2", hash: "1356dddb4bbb3ed8b0bafddb66be06bd03aa4c25b9fa09d11adc921c25eee5ea" }
+];
+
+/* ---------- Small helpers ---------- */
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : "p-" + Date.now() + "-" + Math.random().toString(36).slice(2));
+const net = { offline: false, reject: false };
+let user = null;
+function log(msg) { const el = $("log"); el.textContent += "[" + new Date().toLocaleTimeString() + "] " + msg + "\n"; el.scrollTop = el.scrollHeight; }
+
+/* ---------- Storage (IndexedDB): data survives closing the app (QR-02) ---------- */
+let dbp = null;
+function openDb() {
+  if (dbp) return dbp;
+  dbp = new Promise((resolve, reject) => {
+    const r = indexedDB.open("stemmate-slice", 1);
+    r.onupgradeneeded = () => {
+      const db = r.result;
+      db.createObjectStore("drafts", { keyPath: "ownerId" });
+      db.createObjectStore("plans", { keyPath: "planId" });
+      db.createObjectStore("outbox", { keyPath: "planId" });
+      db.createObjectStore("mockServer", { keyPath: "planId" });
+    };
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(new Error("Could not open storage on this device."));
+  });
+  return dbp;
+}
+async function tx(stores, mode, fn) {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const t = db.transaction(stores, mode); let out;
+    out = fn(...stores.map((s) => t.objectStore(s)));
+    t.oncomplete = () => resolve(out instanceof IDBRequest ? out.result : out);
+    t.onerror = () => reject(t.error || new Error("Storage error"));
+    t.onabort = () => reject(t.error || new Error("Storage was full or blocked. Nothing was saved."));
+  });
+}
+const idbGet = (store, key) => tx([store], "readonly", (s) => s.get(key));
+const idbAll = (store) => tx([store], "readonly", (s) => s.getAll());
+const idbPut = (store, val) => tx([store], "readwrite", (s) => s.put(val));
+const idbDel = (store, key) => tx([store], "readwrite", (s) => s.delete(key));
+
+/* ---------- Login (FR-A4-01) ---------- */
+async function sha256(text) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function login(email, password) {
+  const errs = [];
+  if (!email.trim()) errs.push("Enter your email.");
+  if (!password) errs.push("Enter your password.");
+  if (errs.length) throw new Error(errs.join(" "));
+  const acc = DEMO_ACCOUNTS.find((a) => a.email === email.trim().toLowerCase());
+  const ok = acc && (await sha256(acc.salt + password)) === acc.hash;
+  // Same message for unknown email and wrong password, so it does not reveal which accounts exist.
+  if (!ok) throw new Error("Email or password is not correct. Check them and try again.");
+  const token = Array.from(crypto.getRandomValues(new Uint8Array(16))).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const u = { id: acc.id, name: acc.name, token, signedInAt: new Date().toISOString() };
+  try { sessionStorage.setItem("stemmate.session", JSON.stringify(u)); } catch (e) { /* private mode: stay signed in for this page only */ }
+  return u;
+}
+async function logout() { try { sessionStorage.removeItem("stemmate.session"); } catch (e) {} user = null; }
+
+/* ---------- Plan validation (FR-03, QR-A4-01) ---------- */
+function validatePlan(f) {
+  const e = {};
+  if (!f.title || f.title.trim().length < 3) e.title = "Enter a plan title of at least 3 characters.";
+  const steps = (f.steps || "").split("\n").map((s) => s.trim()).filter(Boolean);
+  if (steps.length < 1) e.steps = "Add at least one step. Write one step per line.";
+  const m = Number(f.minutes);
+  if (!String(f.minutes || "").trim() || !Number.isInteger(m) || m < 5 || m > 240) e.minutes = "Enter whole minutes between 5 and 240.";
+  if (!f.materials || !f.materials.trim()) e.materials = 'List the materials, or write "None".';
+  if (!f.safety || !f.safety.trim()) e.safety = "Add a safety note.";
+  if (!f.inclusion || !f.inclusion.trim()) e.inclusion = "Add an inclusion prompt.";
+  return { valid: Object.keys(e).length === 0, errors: e, steps, minutes: m };
+}
+const FIELDS = ["title", "steps", "minutes", "materials", "safety", "inclusion"];
+const readForm = () => Object.fromEntries(FIELDS.map((k) => [k, $(k).value]));
+function fillForm(f, planId) { FIELDS.forEach((k) => ($(k).value = (f && f[k]) || "")); $("planId").value = planId || ""; }
+function showErrors(errors) {
+  FIELDS.forEach((k) => { $("e-" + k).textContent = errors[k] || ""; $(k).setAttribute("aria-invalid", errors[k] ? "true" : "false"); });
+  const first = FIELDS.find((k) => errors[k]); if (first) $(first).focus();
+}
+
+/* ---------- Drafts: autosave and restore (QR-02), one workspace per facilitator (QR-06) ---------- */
+let draftTimer = null;
+function scheduleDraft() {
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(saveDraft, 400);
+}
+async function saveDraft() {
+  if (!user) return;
+  try {
+    await idbPut("drafts", { ownerId: user.id, planId: $("planId").value, fields: readForm(), savedAt: new Date().toISOString() });
+    $("draftNote").textContent = "Draft saved on this device at " + new Date().toLocaleTimeString() + ".";
+  } catch (err) { $("draftNote").textContent = "Draft could not be saved: " + err.message; }
+}
+async function restoreDraft() {
+  const d = await idbGet("drafts", user.id);
+  if (d) { fillForm(d.fields, d.planId); $("draftNote").textContent = "Your unfinished draft was restored."; log("Draft restored for " + user.id); }
+}
+
+/* ---------- Save plan: write locally first, then queue (FR-04) ---------- */
+async function savePlan() {
+  clearTimeout(draftTimer); // a pending autosave must not recreate the draft after a successful save
+  const f = readForm(); const v = validatePlan(f);
+  showErrors(v.errors);
+  if (!v.valid) { setBanner("Plan not saved. Fix the highlighted fields.", "failed", "✖"); log("Validation failed: " + Object.keys(v.errors).join(", ")); return; }
+  const planId = $("planId").value || uuid();
+  const plan = { planId, ownerId: user.id, title: f.title.trim(), steps: v.steps, minutes: v.minutes,
+                 materials: f.materials.trim(), safety: f.safety.trim(), inclusion: f.inclusion.trim(), updatedAt: new Date().toISOString() };
+  const item = { planId, ownerId: user.id, state: "Pending", retryCount: 0, lastError: "" };
+  try {
+    await tx(["plans", "outbox", "drafts"], "readwrite", (p, o, d) => { p.put(plan); o.put(item); d.delete(user.id); });
+  } catch (err) { setBanner("Plan not saved: " + err.message, "failed", "✖"); log("SAVE ERROR: " + err.message); return; }
+  log("Plan saved on this device: " + planId + " (Pending)");
+  fillForm(null, ""); $("draftNote").textContent = "";
+  await refresh();
+  await syncOutbox();
+}
+
+/* ---------- Simulated server: stores a plan once per planId (idempotent) ---------- */
+async function sendToServer(plan) {
+  if (net.offline || !navigator.onLine) { const e = new Error("No connection."); e.kind = "network"; throw e; }
+  if (net.reject) { const e = new Error("The server rejected this plan (simulated)."); e.kind = "rejected"; throw e; }
+  const existing = await idbGet("mockServer", plan.planId);
+  if (existing && existing.updatedAt >= plan.updatedAt) return { status: "duplicate" };
+  await idbPut("mockServer", { ...plan, receivedAt: new Date().toISOString() });
+  return { status: existing ? "replaced" : "created" };
+}
+
+/* ---------- Sync manager: Pending / Failed / Synced (FR-04, FR-A4-02) ---------- */
+let syncing = false;
+async function syncOutbox() {
+  if (!user || syncing) return; syncing = true;
+  try {
+    const items = (await idbAll("outbox")).filter((i) => i.ownerId === user.id && i.state !== "Synced");
+    for (const it of items) {
+      const plan = await idbGet("plans", it.planId);
+      try {
+        const r = await sendToServer(plan);
+        await idbPut("outbox", { ...it, state: "Synced", lastError: "" });
+        log("Synced " + it.planId + " (" + r.status + ")");
+      } catch (err) {
+        if (err.kind === "network") { await idbPut("outbox", { ...it, state: "Pending", lastError: "No connection" }); log("Still Pending (offline): " + it.planId); }
+        else { await idbPut("outbox", { ...it, state: "Failed", retryCount: it.retryCount + 1, lastError: err.message }); log("FAILED " + it.planId + ": " + err.message); }
+      }
+    }
+  } finally { syncing = false; }
+  await refresh();
+}
+
+/* ---------- Screen ---------- */
+const ICON = { Synced: "✔", Pending: "⏳", Failed: "✖" };
+const CLS = { Synced: "s-synced", Pending: "s-pending", Failed: "s-failed" };
+function setBanner(text, state, icon) { const b = $("status"); b.className = "banner " + (CLS[state] || "s-none"); b.textContent = (icon ? icon + " " : "") + text; }
+async function refresh() {
+  if (!user) return;
+  const plans = (await idbAll("plans")).filter((p) => p.ownerId === user.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const outbox = Object.fromEntries((await idbAll("outbox")).filter((o) => o.ownerId === user.id).map((o) => [o.planId, o]));
+  $("plans").innerHTML = plans.length ? plans.map((p) => {
+    const o = outbox[p.planId] || { state: "Pending", lastError: "" };
+    const note = o.state === "Pending" ? "Saved on this device. Will send when there is a connection."
+               : o.state === "Failed" ? "Not sent: " + esc(o.lastError) + " Your plan is still saved on this device."
+               : "Sent and confirmed.";
+    return '<li><strong>' + esc(p.title) + '</strong> <span class="tag ' + CLS[o.state] + '">' + ICON[o.state] + " " + o.state + '</span>' +
+      '<div class="hint">' + p.steps.length + " step(s), " + p.minutes + " min. " + note + '</div>' +
+      '<button type="button" class="secondary" data-edit="' + esc(p.planId) + '" aria-label="Edit plan ' + esc(p.title) + '">Edit</button>' +
+      (o.state !== "Synced" ? '<button type="button" class="secondary" data-retry="1">Try again</button>' : "") + '</li>';
+  }).join("") : "<li>No saved plans yet.</li>";
+  const states = Object.values(outbox).map((o) => o.state);
+  if (states.includes("Failed")) setBanner("Some plans failed to send. They are still saved on this device. Tap Try again.", "failed", ICON.Failed);
+  else if (states.includes("Pending")) setBanner("Some plans are waiting to send (Pending). They are safe on this device.", "pending", ICON.Pending);
+  else if (states.length) setBanner("All plans are Synced.", "synced", ICON.Synced);
+  else setBanner("Signed in as " + user.name + ". No plans yet.", "none", "");
+  $("serverCount").textContent = "Plans held by the simulated server: " + (await idbAll("mockServer")).length;
+}
+
+/* ---------- Wiring ---------- */
+async function enter(u) {
+  user = u; $("loginCard").hidden = true; $("app").hidden = false; $("who").textContent = "Signed in as " + u.name;
+  log("Signed in: " + u.id); await restoreDraft(); await refresh(); await syncOutbox();
+}
+$("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault(); $("loginErr").textContent = "";
+  try { await enter(await login($("email").value, $("password").value)); $("password").value = ""; }
+  catch (err) { $("loginErr").textContent = err.message; log("LOGIN FAILED"); }
+});
+$("logout").addEventListener("click", async () => {
+  await saveDraft(); await logout(); fillForm(null, ""); $("app").hidden = true; $("loginCard").hidden = false;
+  setBanner("Signed out. Your saved plans stay on this device.", "none", ""); log("Signed out");
+});
+$("planForm").addEventListener("submit", (e) => { e.preventDefault(); savePlan(); });
+$("planForm").addEventListener("input", scheduleDraft);
+$("newPlan").addEventListener("click", async () => { fillForm(null, ""); showErrors({}); if (user) await idbDel("drafts", user.id); $("draftNote").textContent = ""; });
+$("syncNow").addEventListener("click", syncOutbox);
+$("plans").addEventListener("click", async (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.retry) { await syncOutbox(); return; }
+  if (b.dataset.edit) { const p = await idbGet("plans", b.dataset.edit); if (p && p.ownerId === user.id) { fillForm({ ...p, steps: p.steps.join("\n"), minutes: String(p.minutes) }, p.planId); $("title").focus(); log("Editing " + p.planId); } }
+});
+$("offlineToggle").addEventListener("change", (e) => { net.offline = e.target.checked; log("Simulated offline = " + net.offline); if (!net.offline) syncOutbox(); else refresh(); });
+$("rejectToggle").addEventListener("change", (e) => { net.reject = e.target.checked; log("Simulated server rejection = " + net.reject); });
+window.addEventListener("online", syncOutbox);
+window.addEventListener("beforeunload", () => { if (user) saveDraft(); });
+(async () => {
+  try { await openDb(); let s = null; try { s = JSON.parse(sessionStorage.getItem("stemmate.session")); } catch (e) {} if (s) await enter(s); else log("Ready. Sign in to start."); }
+  catch (err) { setBanner("Storage is not available on this device: " + err.message, "failed", ICON.Failed); }
+})();
+</script>
+</body>
+</html>
